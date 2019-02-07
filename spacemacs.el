@@ -2,17 +2,6 @@
 ;; This file is loaded by Spacemacs at startup.
 ;; It must be stored in your home directory.
 
-;; Use eslint from node_modules when available
-;; https://gist.github.com/julianusti/83646d8c147f62825e6eed1eba087110
-(defun my/eslint-path ()
-  (let ((root (locate-dominating-file
-               (or (buffer-file-name) default-directory)
-               (lambda (dir)
-                 (let ((eslint (expand-file-name "node_modules/eslint/bin/eslint.js" dir)))
-                   (and eslint (file-executable-p eslint)))))))
-    (when root
-      (expand-file-name "node_modules/eslint/bin/eslint.js" root))))
-
 (defun dotspacemacs/layers ()
   "Configuration Layers declaration.
 You should not put any user code in this function besides modifying the variable
@@ -42,23 +31,33 @@ values."
    ;; List of configuration layers to load.
    dotspacemacs-configuration-layers
    '(
+     typescript
+     octave
+     python
      yaml
      javascript
+     docker
+     react
+     osx
      ;; ----------------------------------------------------------------
      ;; Example of useful layers you may want to use right away.
      ;; Uncomment some layer names and press <SPC f e R> (Vim style) or
      ;; <M-m f e R> (Emacs style) to install them.
      ;; ----------------------------------------------------------------
      helm
-     auto-completion
+     (auto-completion :variables
+                      auto-completion-return-key-behavior nil
+                      auto-completion-tab-key-behavior 'complete
+                      auto-completion-enable-help-tooltip t)
      ;; better-defaults
      emacs-lisp
      git
      markdown
-     org
+     (org :variables
+          org-enable-github-support t)
      (shell :variables
             shell-default-shell 'eshell
-            shell-default-position 'full)
+            shell-default-position 'bottom)
      (spell-checking :variables =enable-flyspell-auto-completion= t)
      syntax-checking
      version-control
@@ -67,7 +66,7 @@ values."
    ;; wrapped in a layer. If you need some configuration for these
    ;; packages, then consider creating a layer. You can also put the
    ;; configuration in `dotspacemacs/user-config'.
-   dotspacemacs-additional-packages '(eslint-fix)
+   dotspacemacs-additional-packages '(eslint-fix rainbow-mode editorconfig mocha string-inflection)
    ;; A list of packages that cannot be updated.
    dotspacemacs-frozen-packages '()
    ;; A list of packages that will not be installed and loaded.
@@ -103,7 +102,7 @@ values."
    ;; when the current branch is not `develop'. Note that checking for
    ;; new versions works via git commands, thus it calls GitHub services
    ;; whenever you start Emacs. (default nil)
-   dotspacemacs-check-for-update nil
+   dotspacemacs-check-for-update t
    ;; If non-nil, a form that evaluates to a package directory. For example, to
    ;; use different package directories for different Emacs versions, set this
    ;; to `emacs-version'.
@@ -159,7 +158,7 @@ values."
    dotspacemacs-ex-command-key ":"
    ;; The leader key accessible in `emacs state' and `insert state'
    ;; (default "M-m")
-  dotspacemacs-emacs-leader-key "M-m"
+   dotspacemacs-emacs-leader-key "M-m"
    ;; Major mode leader key is a shortcut key which is the equivalent of
    ;; pressing `<leader> m`. Set it to `nil` to disable it. (default ",")
    dotspacemacs-major-mode-leader-key ","
@@ -323,6 +322,189 @@ This is the place where most of your configurations should be done. Unless it is
 explicitly specified that a variable should be set before a package is loaded,
 you should place your code here."
 
+  ;; from https://github.com/syl20bnr/spacemacs/blob/develop/layers/%2Bspacemacs/spacemacs-editing/packages.el
+  (defun spacemacs-editing/init-string-inflection ()
+    (use-package string-inflection
+      :init
+      (progn
+        (spacemacs|define-transient-state string-inflection
+          :title "String Inflection Transient State"
+          :doc "\n [_i_] cycle"
+          :bindings
+          ("i" string-inflection-all-cycle))
+        (spacemacs/declare-prefix "xi" "inflection")
+        (spacemacs/set-leader-keys
+          "xic" 'string-inflection-lower-camelcase
+          "xiC" 'string-inflection-camelcase
+          "xii" 'spacemacs/string-inflection-transient-state/body
+          "xi-" 'string-inflection-kebab-case
+          "xik" 'string-inflection-kebab-case
+          "xi_" 'string-inflection-underscore
+          "xiu" 'string-inflection-underscore
+          "xiU" 'string-inflection-upcase))))
+
+  (setq projectile-project-search-path '("/Volumes/Dev/"))
+  (setq projectile-switch-project-action 'magit-status)
+  (setq delete-by-moving-to-trash nil) ;; trash is evil
+
+  (use-package compile
+    :config
+
+    (defcustom
+      compose-service-file
+      nil
+      "The path to docker-compose.yml"
+      :type string-chars-consed)
+    (setq compose-service-file "/Volumes/Dev/dev-env/docker-compose.yml")
+
+    (defcustom
+      compose-service-name
+      nil
+      "The docker-compose service name"
+      :type string-chars-consed)
+
+    (defun jest-walk-up-to-it (node)
+      "Recursively walk up the ast from the js2-node NODE.
+Stops when we find a call node named 'describe' or 'it' or reach the root.
+If we find the name node we are looking for, return the first argument of the call node.
+If we reach the root without finding what we are looking for return nil."
+      (if (and (js2-node-p node) (not (js2-ast-root-p node)))
+          (if (and
+               ;; If the node is an expression or statement
+               (js2-expr-stmt-node-p node)
+               ;; And the expression is a function calL
+               (js2-call-node-p (js2-expr-stmt-node-expr node))
+               ;; And the call target is a name node
+               (js2-name-node-p (js2-call-node-target (js2-expr-stmt-node-expr node)))
+               ;; And the name of the name node is what we are looking for
+               (member (js2-name-node-name (js2-call-node-target (js2-expr-stmt-node-expr node)))
+                       '("describe" "id")))
+              ;; Get the first argument, check it is a string and return its value
+              (let ((first-arg (car (js2-call-node-args (js2-expr-stmt-node-expr node)))))
+                (if (js2-string-node-p first-arg)
+                    (js2-string-node-value first-arg)
+                  nil))
+            (jest-walk-up-to-it (js2-node-parent-stmt node)))
+        nil))
+
+    (defun jest-find-current-test ()
+      "Try to find the innermost 'describe' or 'it' using js2-mode.
+
+When a 'describe' or 'it' is found, return the first argument of that call.
+If js2-mode is not enabled in the buffer, returns nil.
+If there is no wrapping 'describe' or 'it' found, return nil."
+      (let ((node (js2-node-at-point nil t)))
+        (jest-walk-up-to-it node)))
+
+    ;; TODO: handle jest's console.* indicators
+    ;; TODO: handle jest's test suite indicators:  FAIL  apps/data-collector/handlers/__tests__/javascriptPayload.test.js (14.78s)
+
+    (defvar node-error-regexp
+      "^[  ]+at \\(?:[^\(\n]+ \(\\)?\\(\\(?:[a-zA-Z]:\\)?[a-zA-Z\.0-9_/\\-]+\\):\\([0-9]+\\):\\([0-9]+\\)\)?"
+      "Regular expression to match NodeJS errors.
+From http://benhollis.net/blog/2015/12/20/nodejs-stack-traces-in-emacs-compilation-mode/")
+
+    (defvar node-error-regexp-alist
+      `((,node-error-regexp 1 2 3 nil 1)))
+
+    (defun jest-test-filter ()
+      "Filter function for compilation output."
+      (ansi-color-apply-on-region compilation-filter-start (point-max))
+      (save-excursion
+        (while (re-search-forward "^[\\[[0-9]+[a-z]" nil t)
+          (replace-match ""))))
+
+    (define-compilation-mode jest-test-mode "Jest Test"
+      "Jest test mode."
+      (progn
+        (set (make-local-variable 'compilation-error-regexp-alist) node-error-regexp-alist)
+        (add-hook 'compilation-filter-hook 'jest-test-filter nil t)
+        ))
+
+    ;; test configuration
+    (defun jest-run (compose-file service debug jest-args &optional test-suite test)
+      "Run jest in a compilation buffer"
+
+      (let* ((file (if (eq test-suite nil) nil (file-relative-name test-suite (projectile-project-root))))
+             (debug-flag (if (eq debug t) "-n --inspect=0.0.0.0:9230" ""))
+             (test-flag (if (eq test nil) "" (concat " -t \"" test "\"")))
+             (compose-file-flag (if (eq compose-file nil) "" (concat "-f " compose-file)))
+             (command (concat "docker-compose " compose-file-flag " exec -e TERM=$TERM " service " npx " debug-flag " jest --colors " jest-args " " file test-flag))
+             ;; (command (concat "env && echo container && docker exec -t " container " env"))
+             )
+        (compile command 'jest-test-mode)))
+
+    (defun jest-test-project ()
+      "Test the current project."
+      (interactive)
+      (jest-run compose-service-file compose-service-name nil nil))
+
+    (defun jest-test-file ()
+      "Test the current file"
+      (interactive)
+      (jest-run compose-service-file compose-service-name nil nil (buffer-file-name)))
+
+    (defun jest-test-file-debug ()
+      "Test the current file"
+      (interactive)
+      (jest-run compose-service-file compose-service-name t nil (buffer-file-name)))
+
+    (defun jest-test-file-snapshot ()
+      "Test the current file"
+      (interactive)
+      (jest-run compose-service-file compose-service-name nil "-u" (buffer-file-name)))
+
+    (defun jest-test-file-coverage ()
+      "Test the current file"
+      (interactive)
+      (jest-run compose-service-file compose-service-name nil "--coverage" (buffer-file-name)))
+
+    (defun jest-test-at-point ()
+      "Test the current test"
+      (interactive)
+      (jest-run compose-service-file compose-service-name nil nil (buffer-file-name) "rotates format"))
+    )
+
+  ;; Use eslint from node_modules when available
+  ;; https://gist.github.com/julianusti/83646d8c147f62825e6eed1eba087110
+  (defun my/eslint-path ()
+    (let ((root (locate-dominating-file
+                 (or (buffer-file-name) default-directory)
+                 (lambda (dir)
+                   (let ((eslint (expand-file-name "node_modules/eslint/bin/eslint.js" dir)))
+                     (and eslint (file-executable-p eslint)))))))
+      (if root (expand-file-name "node_modules/eslint/bin/eslint.js" root) "eslint")))
+
+  ;; docker shortcuts
+  (setq active-docker-container "dev-env_decision-engine_1")
+  (defun eshell/dl (&optional name tail follow)
+    "Show the logs from a docker container"
+    (eshell-command "echo hello")
+    )
+
+  (defun d-logs (&optional name tail follow)
+    "Show the logs from a docker container"
+    (interactive)
+    (start-process "docker-logs" "*Logs*" "sh" "-c" (format "docker logs %s --tail %s %s | bunyan" name tail (if follow "-f"))))
+  ;; (start-process "docker-logs" "*Logs*" "docker" "logs" name "--tail" tail (if follow "-f")))
+  ;; (async-shell-command (format "docker logs %s %s --tail %s" name (if follow "-f" "") tail)))
+
+  (defun my/docker-logs (&optional tail follow container-name)
+    "Show the logs from container NAME. If FOLLOW is set, run in `async-shell-command'."
+    ;; (interactive (list (docker-container-read-name)))
+    (let (
+          (should-follow (or follow (and (booleanp tail) tail)))
+          (name (if container-name container-name active-docker-container))
+          )
+      (let ((tail-length (if (numberp tail) tail (if should-follow 0 10))))
+        (if follow
+            (async-shell-command (format "%s logs --tail %s -f %s" docker-command tail-length name) (format "* docker logs %s *" name))
+          (docker-utils-with-buffer (format "logs %s" name)
+                                    (insert (docker-run "logs" name "--tail" tail-length)))))
+      ))
+
+
+
   ;; Use eslint from node_modules when available
   ;; https://gist.github.com/julianusti/83646d8c147f62825e6eed1eba087110
   (when (and (memq window-system '(mac ns))
@@ -337,9 +519,21 @@ you should place your code here."
                              (setq-local eslint-fix-executable (my/eslint-path))
                              (add-hook 'after-save-hook 'eslint-fix nil t)
                              ))
+  (add-hook 'react-mode-hook (lambda ()
+                             (setq-local eslint-fix-executable (my/eslint-path))
+                             (add-hook 'after-save-hook 'eslint-fix nil t)
+                             ))
 
+  (add-hook 'js2-mode-hook 'rainbow-mode)
+  (add-hook 'react-mode-hook 'rainbow-mode)
+  (add-hook 'typescript-mode-hook (lambda ()
+                                    (setq-local flycheck-typescript-tslint-executable (concat (projectile-project-root) "node_modules/.bin/tslint"))
+                                    ))
+
+  ;; Disable this because we use eslint instead
   (setq js2-mode-show-parse-errors nil)
   (setq js2-mode-show-strict-warnings nil)
+  (editorconfig-mode 1)
   )
 
 ;; Do not write anything past this comment. This is where Emacs will
@@ -352,7 +546,16 @@ you should place your code here."
  '(evil-want-Y-yank-to-eol nil)
  '(package-selected-packages
    (quote
-    (xterm-color shell-pop multi-term eshell-z eshell-prompt-extras esh-help helm-company helm-c-yasnippet fuzzy company-tern dash-functional tern company-statistics company auto-yasnippet ac-ispell auto-complete eslint-fix yaml-mode smeargle orgit org-projectile org-category-capture org-present org-pomodoro alert log4e gntp org-mime org-download mmm-mode markdown-toc markdown-mode magit-gitflow htmlize helm-gitignore gnuplot gitignore-mode gitconfig-mode gitattributes-mode git-timemachine git-messenger git-link git-gutter-fringe+ git-gutter-fringe fringe-helper git-gutter+ git-gutter gh-md flyspell-correct-helm flyspell-correct flycheck-pos-tip pos-tip flycheck evil-magit magit magit-popup git-commit ghub with-editor diff-hl auto-dictionary web-beautify livid-mode skewer-mode simple-httpd json-mode json-snatcher json-reformat js2-refactor yasnippet multiple-cursors js2-mode js-doc coffee-mode ws-butler winum which-key volatile-highlights vi-tilde-fringe uuidgen use-package toc-org spaceline powerline restart-emacs request rainbow-delimiters popwin persp-mode pcre2el paradox spinner org-plus-contrib org-bullets open-junk-file neotree move-text macrostep lorem-ipsum linum-relative link-hint indent-guide hydra hungry-delete hl-todo highlight-parentheses highlight-numbers parent-mode highlight-indentation helm-themes helm-swoop helm-projectile helm-mode-manager helm-make projectile pkg-info epl helm-flx helm-descbinds helm-ag google-translate golden-ratio flx-ido flx fill-column-indicator fancy-battery eyebrowse expand-region exec-path-from-shell evil-visualstar evil-visual-mark-mode evil-unimpaired evil-tutor evil-surround evil-search-highlight-persist evil-numbers evil-nerd-commenter evil-mc evil-matchit evil-lisp-state smartparens evil-indent-plus evil-iedit-state iedit evil-exchange evil-escape evil-args evil-anzu anzu evil goto-chg undo-tree eval-sexp-fu highlight elisp-slime-nav dumb-jump f dash s diminish define-word column-enforce-mode clean-aindent-mode bind-map bind-key auto-highlight-symbol auto-compile packed aggressive-indent adaptive-wrap ace-window ace-link ace-jump-helm-line helm avy helm-core popup async))))
+    (tide typescript-mode string-inflection mocha reveal-in-osx-finder pbcopy osx-trash osx-dictionary launchctl context-coloring treepy graphql editorconfig yapfify pyvenv pytest pyenv-mode py-isort pip-requirements live-py-mode hy-mode helm-pydoc cython-mode company-anaconda anaconda-mode pythonic ox-gfm rainbow-mode web-mode tagedit slim-mode scss-mode sass-mode pug-mode less-css-mode helm-css-scss haml-mode emmet-mode company-web web-completion-data dockerfile-mode docker tablist docker-tramp let-alist evil-ediff xterm-color shell-pop multi-term eshell-z eshell-prompt-extras esh-help helm-company helm-c-yasnippet fuzzy company-tern dash-functional tern company-statistics company auto-yasnippet ac-ispell auto-complete eslint-fix yaml-mode smeargle orgit org-projectile org-category-capture org-present org-pomodoro alert log4e gntp org-mime org-download mmm-mode markdown-toc markdown-mode magit-gitflow htmlize helm-gitignore gnuplot gitignore-mode gitconfig-mode gitattributes-mode git-timemachine git-messenger git-link git-gutter-fringe+ git-gutter-fringe fringe-helper git-gutter+ git-gutter gh-md flyspell-correct-helm flyspell-correct flycheck-pos-tip pos-tip flycheck evil-magit magit magit-popup git-commit ghub with-editor diff-hl auto-dictionary web-beautify livid-mode skewer-mode simple-httpd json-mode json-snatcher json-reformat js2-refactor yasnippet multiple-cursors js2-mode js-doc coffee-mode ws-butler winum which-key volatile-highlights vi-tilde-fringe uuidgen use-package toc-org spaceline powerline restart-emacs request rainbow-delimiters popwin persp-mode pcre2el paradox spinner org-plus-contrib org-bullets open-junk-file neotree move-text macrostep lorem-ipsum linum-relative link-hint indent-guide hydra hungry-delete hl-todo highlight-parentheses highlight-numbers parent-mode highlight-indentation helm-themes helm-swoop helm-projectile helm-mode-manager helm-make projectile pkg-info epl helm-flx helm-descbinds helm-ag google-translate golden-ratio flx-ido flx fill-column-indicator fancy-battery eyebrowse expand-region exec-path-from-shell evil-visualstar evil-visual-mark-mode evil-unimpaired evil-tutor evil-surround evil-search-highlight-persist evil-numbers evil-nerd-commenter evil-mc evil-matchit evil-lisp-state smartparens evil-indent-plus evil-iedit-state iedit evil-exchange evil-escape evil-args evil-anzu anzu evil goto-chg undo-tree eval-sexp-fu highlight elisp-slime-nav dumb-jump f dash s diminish define-word column-enforce-mode clean-aindent-mode bind-map bind-key auto-highlight-symbol auto-compile packed aggressive-indent adaptive-wrap ace-window ace-link ace-jump-helm-line helm avy helm-core popup async)))
+ '(safe-local-variable-values
+   (quote
+    ((compose-service-name . "precog-ba-data-collector")
+     (compose-service-name . "decision-ai-decision-engine")
+     (compose-service-name . "precog-ba-external-api")
+     (compose-service-name . "klepto")
+     (compose-service-name . "adaptive-id-external-api")
+     (docker-container-name . "dev-env_adaptive-id-external-api_1_77f9175ba5c4")
+     (docker-container-name . "dev-env_adaptive-id-external-api_1")))))
 (custom-set-faces
  ;; custom-set-faces was added by Custom.
  ;; If you edit it by hand, you could mess it up, so be careful.
